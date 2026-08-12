@@ -7,11 +7,16 @@ from playwright.sync_api import sync_playwright
 
 URL = (
     "https://paulasouzaleiloes.com.br/pesquisa"
-    "?estado=SP"
+    "?transacao=Venda"
+    "&estado=SP"
+    "&tipo_imovel=caixa"
+    "&financiamento=nao_aceita_financiamento"
     "&cidade%5B%5D=BAURU"
     "&categoria%5B%5D=6"
+    "&estado_imovel%5B%5D=Leil%C3%A3o"
     "&estado_imovel%5B%5D=Venda+Online"
     "&estado_imovel%5B%5D=Venda+Direta+Online"
+    "&estado_imovel%5B%5D=Licita%C3%A7%C3%A3o+Aberta"
 )
 
 with sync_playwright() as p:

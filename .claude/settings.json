@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python script.py)",
+      "PowerShell(python verificar_novos.py)",
+      "PowerShell(python rodar_url_nova.py)",
+      "PowerShell(python -c \"import json; print\\(len\\(json.load\\(open\\(r'C:\\\\Work\\\\projetos\\\\automacao_imoveis_v2\\\\controle\\\\postados.json', encoding='utf-8'\\)\\)\\)\\)\")"
+    ]
+  }
+}

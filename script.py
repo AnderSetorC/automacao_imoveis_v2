@@ -17,15 +17,27 @@ from playwright.sync_api import sync_playwright
 from PIL import Image
 
 
-# URL filtrada: SP > Bauru > categoria 6 (imovel) > Venda Online / Venda Direta Online.
+# URL filtrada: transacao=Venda, SP > Bauru, categoria 6 (imovel),
+# tipo_imovel=caixa, financiamento=nao_aceita_financiamento,
+# estados: Leilao / Venda Online / Venda Direta Online / Licitacao Aberta.
+# Resultado atual: 2 paginas (~24 imoveis).
 URL = (
     "https://paulasouzaleiloes.com.br/pesquisa"
-    "?estado=SP"
+    "?transacao=Venda"
+    "&estado=SP"
+    "&tipo_imovel=caixa"
+    "&financiamento=nao_aceita_financiamento"
     "&cidade%5B%5D=BAURU"
     "&categoria%5B%5D=6"
+    "&estado_imovel%5B%5D=Leil%C3%A3o"
     "&estado_imovel%5B%5D=Venda+Online"
     "&estado_imovel%5B%5D=Venda+Direta+Online"
+    "&estado_imovel%5B%5D=Licita%C3%A7%C3%A3o+Aberta"
 )
+
+# Pagina do paginador: SPA com botoes data-page="0", data-page="1", ...
+NAV_SELECTOR = "nav.results-pagination"
+PAGE_BUTTON_SELECTOR = "nav.results-pagination button[data-page]"
 
 # Diretorios do projeto (caminhos relativos ao script - rodar da pasta do projeto).
 PASTA_POSTS = "posts"
@@ -131,6 +143,52 @@ def rolar_ate_final(page):
     print(f"Total final de imoveis na pagina: {ultimo_total}")
 
 
+def descobrir_total_paginas(page):
+    """Le os botoes do paginador e devolve a quantidade de paginas.
+    Se nao houver paginador (uma pagina so), devolve 1.
+    """
+    try:
+        if page.locator(NAV_SELECTOR).count() == 0:
+            return 1
+        # Espera os botoes de pagina renderizarem (SPA monta sob demanda).
+        page.wait_for_selector(PAGE_BUTTON_SELECTOR, timeout=5000)
+    except Exception:
+        return 1
+
+    total = page.locator(PAGE_BUTTON_SELECTOR).count()
+    return max(1, total)
+
+
+def ir_para_pagina(page, indice):
+    """Clica no botao data-page=N e espera os cards da nova pagina carregarem.
+
+    O site faz a troca via JS (SPA), entao precisamos esperar:
+      - o botao da pagina alvo ganhar a classe 'is-active'
+      - os cards antigos sumirem / novos aparecerem
+    """
+    seletor_botao = f'{NAV_SELECTOR} button[data-page="{indice}"]'
+    page.locator(seletor_botao).click()
+
+    # Espera ate que o botao dessa pagina esteja ativo.
+    page.wait_for_function(
+        """(sel) => {
+            const btn = document.querySelector(sel);
+            return btn && btn.classList.contains('is-active');
+        }""",
+        arg=f'nav.results-pagination button[data-page="{indice}"]',
+        timeout=10000,
+    )
+
+    # Espera os cards individuais da nova pagina estarem no DOM.
+    page.wait_for_selector(SELECTOR_CARD, timeout=10000)
+
+    # Descanso curto pra lazy load de imagens internas dos cards.
+    try:
+        page.wait_for_load_state("networkidle", timeout=5000)
+    except Exception:
+        page.wait_for_timeout(1500)
+
+
 def composite_card(template, card_img):
     """Cola o card do imovel na area central do template, preservando a moldura
     azul que ja vem no screenshot do site. Card e redimensionado para caber
@@ -191,6 +249,7 @@ def executar():
     legenda = gerar_legenda()
 
     capturados = []   # (ref, PIL.Image)
+    erros_total = 0
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
@@ -199,42 +258,58 @@ def executar():
 
         print(f"Acessando: {URL}")
         page.goto(URL)
-        page.wait_for_selector("text=REF")
+        # Antes: "text=REF" casava com o <option> do select de ordenacao
+        # ("Referencia crescente"), que existe desde o load mas esta dentro de
+        # um <select> fechado => Playwright considera "nao visivel" e estoura
+        # timeout de 30s. Agora esperamos diretamente o card individual que
+        # contem o texto "REF:" no corpo.
+        page.wait_for_selector(f'{SELECTOR_CARD}:has-text("REF:")', timeout=30000)
         page.wait_for_selector(SELECTOR_CARD)   # garante que os cards individuais carregaram
 
-        rolar_ate_final(page)
+        # Descobre quantas paginas existem. Se o paginador nao aparecer
+        # (filtro com poucos imoveis), tudo cai em "uma pagina".
+        total_paginas = descobrir_total_paginas(page)
+        print(f"Paginas encontradas: {total_paginas}\n")
 
-        cards = page.locator(SELECTOR_CARD)
-        total = cards.count()
-        print(f"\nProcessando {total} cards...\n")
+        for num_pagina in range(total_paginas):
+            if num_pagina > 0:
+                ir_para_pagina(page, num_pagina)
 
-        erros = 0
-        for i in range(total):
-            card = cards.nth(i)
-            try:
-                texto = card.inner_text()
-            except Exception as e:
-                print(f"  [{i+1}/{total}] Falha ao ler texto: {e}")
-                erros += 1
-                continue
+            rolar_ate_final(page)
 
-            ref = extrair_ref(texto)
-            if ref is None:
-                print(f"  [{i+1}/{total}] REF nao reconhecida, ignorando")
-                continue
+            cards = page.locator(SELECTOR_CARD)
+            total = cards.count()
+            print(f"\n--- Pagina {num_pagina + 1}/{total_paginas}: {total} cards ---")
 
-            if ref in postados:
-                continue   # ja processada, silencioso
+            erros_pagina = 0
+            for i in range(total):
+                card = cards.nth(i)
+                try:
+                    texto = card.inner_text()
+                except Exception as e:
+                    print(f"  [p{num_pagina+1} {i+1}/{total}] Falha ao ler texto: {e}")
+                    erros_pagina += 1
+                    continue
 
-            img = capturar_card(page, card)
-            if img is None:
-                print(f"  [{i+1}/{total}] Imagem nao carregou para {ref}")
-                erros += 1
-                continue
+                ref = extrair_ref(texto)
+                if ref is None:
+                    print(f"  [p{num_pagina+1} {i+1}/{total}] REF nao reconhecida, ignorando")
+                    continue
 
-            capturados.append((ref, img))
-            salvar_postado(postados, ref)
-            print(f"  [{i+1}/{total}] Capturado: {ref}")
+                if ref in postados:
+                    continue   # ja processada, silencioso
+
+                img = capturar_card(page, card)
+                if img is None:
+                    print(f"  [p{num_pagina+1} {i+1}/{total}] Imagem nao carregou para {ref}")
+                    erros_pagina += 1
+                    continue
+
+                capturados.append((ref, img))
+                salvar_postado(postados, ref)
+                print(f"  [p{num_pagina+1} {i+1}/{total}] Capturado: {ref}")
+
+            erros_total += erros_pagina
 
         browser.close()
 
@@ -258,7 +333,7 @@ def executar():
 
         print(f"  Post gerado: {nome} (REF {ref})")
 
-    print(f"\nFinalizado. {len(capturados)} posts, {erros} erros.")
+    print(f"\nFinalizado. {len(capturados)} posts, {erros_total} erros.")
 
 
 if __name__ == "__main__":
