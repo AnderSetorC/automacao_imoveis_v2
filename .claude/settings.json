@@ -12,7 +12,9 @@
       "Bash(python -m py_compile script.py)",
       "Bash(git add *)",
       "Bash(tasklist)",
-      "Bash(rm -f .git/index.lock)"
+      "Bash(rm -f .git/index.lock)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }
