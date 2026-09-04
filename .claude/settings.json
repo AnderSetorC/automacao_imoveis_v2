@@ -4,7 +4,15 @@
       "PowerShell(python script.py)",
       "PowerShell(python verificar_novos.py)",
       "PowerShell(python rodar_url_nova.py)",
-      "PowerShell(python -c \"import json; print\\(len\\(json.load\\(open\\(r'C:\\\\Work\\\\projetos\\\\automacao_imoveis_v2\\\\controle\\\\postados.json', encoding='utf-8'\\)\\)\\)\\)\")"
+      "PowerShell(python -c \"import json; print\\(len\\(json.load\\(open\\(r'C:\\\\Work\\\\projetos\\\\automacao_imoveis_v2\\\\controle\\\\postados.json', encoding='utf-8'\\)\\)\\)\\)\")",
+      "Bash(rtk git *)",
+      "Bash(mkdir -p arquivados/facebook)",
+      "Bash(git mv *)",
+      "Bash(mv abrir_chrome_automacao.bat arquivados/facebook/abrir_chrome_automacao.bat)",
+      "Bash(python -m py_compile script.py)",
+      "Bash(git add *)",
+      "Bash(tasklist)",
+      "Bash(rm -f .git/index.lock)"
     ]
   }
 }
